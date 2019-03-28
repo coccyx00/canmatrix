@@ -691,7 +691,7 @@ class Frame(object):
 
     @property
     def pgn(self):  # type: () -> int
-        return CanId(self.arbitration_id).pgn
+        return J1939CanId(self.arbitration_id).pgn
 
     @pgn.setter
     def pgn(self, value):  # type: (int) -> None
@@ -1438,7 +1438,7 @@ class CanMatrix(object):
         :rtype: Frame or None
         """
         for test in self.frames:
-            if CanId(test.arbitration_id).pgn == pgn:
+            if J1939CanId(test.arbitration_id).pgn == J1939CanId.from_pgn(pgn).pgn:
                 return test
         return None
 
@@ -1842,7 +1842,7 @@ class CanMatrix(object):
                             signal.attributes[define] = str(signal.attributes[define])
 
 
-class CanId(object):
+class J1939CanId(object):
     """
     Split Id into Global source addresses (source, destination) off ECU and PGN (SAE J1939).
     """
@@ -1853,12 +1853,26 @@ class CanId(object):
 
     def __init__(self, arbitration_id):  # type: (ArbitrationId) -> None
         if arbitration_id.extended:
-            self.source = arbitration_id.id & int('0xFF', 16)
-            self.pgn = (arbitration_id.id >> 8) & int('0xFFFF', 16)
-            self.destination = arbitration_id.id >> 8 * 3 & int('0xFF', 16)
+            self.source = arbitration_id.id & 0xFF
+            self.ps = (arbitration_id.id >> 8) & 0xFF
+            self.pf = (arbitration_id.id >> 16) & 0xFF
+            self.edp = (arbitration_id.id >> 24) & 0x03
+            self.priority = (arbitration_id.id >> 25) & 0x7
+
+            self.pgn = self.pf << 8
+            if self.pf >= 240:
+                self.pgn += self.ps
+            else:
+                self.destination = self.ps
         else:
             # TODO implement for standard Id
             pass
+
+    @classmethod
+    def from_pgn(cls, pgn):
+        return cls(
+            canmatrix.ArbitrationId(id = (pgn << 8), extended = True)
+        )
 
     def tuples(self):  # type: () -> typing.Tuple[int, int, int]
         """Get tuple (destination, PGN, source)
